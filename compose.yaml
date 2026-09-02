@@ -1,0 +1,29 @@
+services:
+  slam:
+    image: robot-modules/slam:humble
+    platform: ${ROBOT_PLATFORM:-linux/arm64}
+    container_name: robot-slam
+    init: true
+    stop_signal: SIGINT
+    stop_grace_period: 60s
+    build:
+      context: .
+      dockerfile: Dockerfile
+      args:
+        ROS_DISTRO: humble
+        UID: ${HOST_UID:-1000}
+        GID: ${HOST_GID:-1000}
+    network_mode: host
+    environment:
+      RMW_IMPLEMENTATION: rmw_cyclonedds_cpp
+      ROS_DOMAIN_ID: ${ROS_DOMAIN_ID:-0}
+      ROS_LOCALHOST_ONLY: 0
+    volumes:
+      - ./config:/ws/config:ro
+      - ./data:/data
+    command:
+      - ros2
+      - launch
+      - rtabmap_bringup
+      - slam.launch.py
+      - config_file:=/ws/config/slam.yaml
