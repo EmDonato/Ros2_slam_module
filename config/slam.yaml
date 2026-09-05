@@ -1,41 +1,40 @@
 slam_bringup:
   ros__parameters:
-    # mapping: continue an existing map or create one when the database is absent.
-    # reset_mapping: delete the configured database before starting a new map.
-    # localization: load an existing database without adding new map nodes.
+    # mapping: continua una mappa esistente oppure ne crea una nuova.
+    # reset_mapping: elimina il database prima di creare una nuova mappa.
+    # localization: usa il database esistente senza aggiungere nuovi nodi.
     mode: "mapping"
+
     namespace: "rtabmap"
     log_level: "info"
     database_path: "/data/rtabmap.db"
 
-    # RealSense color and aligned-depth streams. The camera driver owns frame rate.
+    # Input RealSense.
     rgb_topic: "/camera/realsense/color/image_raw"
     depth_topic: "/camera/realsense/aligned_depth_to_color/image_raw"
     camera_info_topic: "/camera/realsense/color/camera_info"
 
-    # External odometry produced by the robot EKF.
+    # Odometria prodotta dall'EKF.
     odom_topic: "/odom"
 
-    # Output names are relative to the namespace above.
+    # Output relativi al namespace /rtabmap.
     map_topic: "map"
     map_data_topic: "mapData"
     map_graph_topic: "mapGraph"
     cloud_map_topic: "cloud_map"
     info_topic: "info"
 
+
 rtabmap:
   ros__parameters:
     use_sim_time: false
 
-    # RTAB-Map estimates map -> odom. The EKF owns odom -> base_link.
+
     frame_id: "base_link"
     map_frame_id: "map"
     odom_frame_id: ""
     publish_tf: true
 
-    # RealSense provides synchronized color and aligned depth. RTAB-Map uses its
-    # internal approximate policy only to pair those frames with independent EKF
-    # odometry; no separate rgbd_sync node is launched.
     subscribe_rgb: true
     subscribe_depth: true
     subscribe_rgbd: false
@@ -43,45 +42,41 @@ rtabmap:
     subscribe_scan: false
     subscribe_scan_cloud: false
     subscribe_odom_info: false
+
     approx_sync: true
-    approx_sync_max_interval: 0.04
+    approx_sync_max_interval: 0.10
     odom_sensor_sync: true
 
-    # Small bounded queues prevent stale RGB-D frames from accumulating.
-    topic_queue_size: 5
-    sync_queue_size: 5
+    topic_queue_size: 30
+    sync_queue_size: 30
     wait_for_transform: 0.2
 
-    # QoS values: 0=system default, 1=reliable, 2=best effort.
+   
     qos_image: 2
     qos_camera_info: 2
     qos_odom: 1
 
-    # Map publications are retained for late offboard subscribers.
     latch: true
     map_cleanup: true
     map_always_update: false
     cloud_output_voxelized: true
     cloud_subtract_filtering: false
 
-    # The RealSense publishes at 15 FPS; RTAB-Map processes at most 5 frames/s.
-    "Rtabmap/DetectionRate": "5.0"
+    "Rtabmap/DetectionRate": "3.0"
 
-    # Ground robot motion and graph creation.
     "Reg/Strategy": "0"
     "Reg/Force3DoF": "true"
+
     "RGBD/LinearUpdate": "0.10"
     "RGBD/AngularUpdate": "0.10"
     "RGBD/ProximityBySpace": "true"
     "RGBD/CreateOccupancyGrid": "true"
+
     "Mem/BinDataKept": "true"
 
-    # Visual loop-closure constraints.
     "Kp/MaxDepth": "4.0"
     "Vis/MinInliers": "15"
 
-    # RGB-D occupancy data remains three-dimensional. Depth decimation limits
-    # the mapping cost on Raspberry Pi while full sensor data stays in the DB.
     "Grid/Sensor": "1"
     "Grid/3D": "true"
     "Grid/DepthDecimation": "4"
