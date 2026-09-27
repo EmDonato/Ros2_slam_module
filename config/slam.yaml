@@ -3,7 +3,7 @@ slam_bringup:
     # mapping: continua una mappa esistente oppure ne crea una nuova.
     # reset_mapping: elimina il database prima di creare una nuova mappa.
     # localization: usa il database esistente senza aggiungere nuovi nodi.
-    mode: "mapping"
+    mode: "reset_mapping"
 
     namespace: "rtabmap"
     log_level: "info"
