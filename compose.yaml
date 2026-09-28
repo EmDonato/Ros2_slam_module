@@ -24,6 +24,6 @@ services:
     command:
       - ros2
       - launch
-      - rtabmap_bringup
-      - slam.launch.py
-      - config_file:=/ws/config/slam.yaml
+      - ${SLAM_PACKAGE:-rtabmap_bringup}
+      - ${SLAM_LAUNCH_FILE:-slam.launch.py}
+      - config_file:=${SLAM_CONFIG_FILE:-/ws/config/slam.yaml}

@@ -1,155 +1,337 @@
-# Headless RGB-D SLAM
+# Headless ROS 2 SLAM
 
-This standalone ROS 2 Humble module runs RTAB-Map on an edge computer using
-aligned RGB-D images and external odometry. It is designed for Raspberry Pi 5
-(`linux/arm64`) and does not start a camera driver, visual odometry, ICP
-odometry, RViz, or `rtabmap_viz`.
+This module runs one of two headless SLAM algorithms in a ROS 2 Humble Docker
+container:
 
-The default integration is:
+| Selector | Algorithm | Main input | Configuration |
+| --- | --- | --- | --- |
+| `rtab` (default) | RTAB-Map RGB-D SLAM | Aligned RGB and depth, camera calibration, and odometry | `config/slam.yaml` |
+| `toolbox` | SLAM Toolbox 2D SLAM | Laser scan and odometry TF | `config/slam_toolbox_config.yaml` |
+
+The image targets a Raspberry Pi 5 (`linux/arm64`) by default. It contains both
+algorithms, while `slam.sh` selects the package, launch file, and configuration
+used by the container.
+
+This module does not start sensor drivers, an EKF, `robot_state_publisher`,
+RViz, or any other visualization process. Those components must be provided by
+the rest of the robot system.
+
+## Architecture
+
+RTAB-Map uses RGB-D observations and external odometry:
 
 ```text
-RealSense RGB + aligned depth + camera info ----+
-                                                  +--> RTAB-Map --> map data
-EKF odometry ------------------------------------+
+RGB image + aligned depth + camera info ----+
+                                              +--> RTAB-Map --> 2D/3D map data
+EKF odometry + robot/camera TF --------------+
 ```
 
-The RealSense and EKF remain independent modules. This module depends only on
-standard ROS 2 and RTAB-Map interfaces.
+SLAM Toolbox uses a planar laser scan and the robot TF tree:
 
-## Runtime requirements
+```text
+LaserScan on /scan --------------------------+
+                                              +--> SLAM Toolbox --> 2D map
+odom -> base_footprint TF -------------------+
+```
 
-Before starting SLAM, the robot bringup must provide:
+Only one algorithm runs in the `robot-slam` container at a time. Both
+algorithms normally publish `map -> odom`, so no other node should publish that
+transform concurrently.
 
-- color images on `/camera/realsense/color/image_raw`;
-- depth aligned to color on
-  `/camera/realsense/aligned_depth_to_color/image_raw`;
-- color calibration on `/camera/realsense/color/camera_info`;
-- EKF odometry on `/odom` as `nav_msgs/msg/Odometry`;
-- the transform `odom -> base_link` from the EKF;
-- a complete static transform chain from `base_link` through the robot-mounted
-  `realsense_link` to the optical frame carried by the image headers.
+## Prerequisites
 
-The expected RealSense profile is 640x480 at 15 FPS with hardware stream
-synchronization and depth-to-color alignment enabled. RTAB-Map processes at
-most 5 frames per second by default, so the camera can keep publishing at 15
-FPS without forcing every image through the SLAM pipeline.
+The host must provide:
 
-Aligned depth and RGB synchronization are produced by the RealSense driver.
-The EKF odometry has an independent clock cadence, so RTAB-Map's internal
-approximate policy pairs it with the synchronized camera frames. The default
-maximum interval is 40 ms and is configurable through
-`approx_sync_max_interval`. No separate `rtabmap_sync/rgbd_sync` node is
-launched.
+- Docker Engine with the Docker Compose v2 plugin;
+- a running Docker daemon;
+- a Linux host when using the supplied host-network configuration;
+- write access to `data/`, used for persistent RTAB-Map data;
+- ROS publishers and transforms required by the selected algorithm.
 
-## Build and run
+Run the built-in prerequisite check from this directory:
 
-Build the default `linux/arm64` image:
+```bash
+./slam.sh check
+```
+
+The check validates Docker, Compose, both configuration files, the Compose
+model, and the writable data directory.
+
+## Sensor and TF requirements
+
+### RTAB-Map
+
+The default configuration expects:
+
+| Input | Default name | Type or requirement |
+| --- | --- | --- |
+| RGB image | `/camera/realsense/color/image_raw` | `sensor_msgs/msg/Image` |
+| Aligned depth | `/camera/realsense/aligned_depth_to_color/image_raw` | `sensor_msgs/msg/Image` |
+| Camera calibration | `/camera/realsense/color/camera_info` | `sensor_msgs/msg/CameraInfo` |
+| Odometry | `/odom` | `nav_msgs/msg/Odometry` |
+| Robot TF | `odom -> base_link` | Normally published by the EKF |
+| Camera TF | `base_link -> ... -> optical frame` | Transforms matching the image headers |
+
+RGB and depth must be geometrically aligned and timestamped closely enough for
+approximate synchronization. The current maximum synchronization interval is
+`0.10` seconds. The camera driver is responsible for RGB/depth alignment; this
+module does not launch `rtabmap_sync/rgbd_sync`.
+
+RTAB-Map uses `base_link` as its robot frame and publishes `map -> odom`. Do
+not change `frame_id` to the camera frame while `/odom` describes `base_link`.
+
+### SLAM Toolbox
+
+The default configuration expects:
+
+| Input | Default name | Type or requirement |
+| --- | --- | --- |
+| Laser scan | `/scan` | `sensor_msgs/msg/LaserScan` |
+| Robot TF | `odom -> base_footprint` | Dynamic odometry transform |
+| Laser TF | `base_footprint -> ... -> laser frame` | Transform matching the scan header |
+
+SLAM Toolbox publishes `map -> odom`. Its configured robot frame is
+`base_footprint`, which intentionally differs from RTAB-Map's `base_link`.
+Change the appropriate YAML file if the robot uses a different frame layout.
+
+## Build and start
+
+`create` builds the image when needed, creates or recreates the container, and
+starts it in the background. A separate build is optional.
+
+Build the default ARM64 image without starting a container:
 
 ```bash
 ./slam.sh build
 ```
 
-Start it in the background:
+Start RTAB-Map, the default algorithm:
 
 ```bash
 ./slam.sh create
 ```
 
-For a native x86-64 development build:
+The explicit RTAB-Map selectors are also accepted:
+
+```bash
+./slam.sh create rtab
+./slam.sh create rtabmap
+```
+
+Start SLAM Toolbox:
+
+```bash
+./slam.sh create toolbox
+```
+
+`slam_toolbox` is accepted as an alias:
+
+```bash
+./slam.sh create slam_toolbox
+```
+
+Running `create` with the other selector recreates the service with the newly
+selected ROS package and configuration. `start` and `restart` retain the
+algorithm stored in the existing container; they do not accept a selector.
+
+For a native x86-64 development build or run:
 
 ```bash
 ROBOT_PLATFORM=linux/amd64 ./slam.sh build
+ROBOT_PLATFORM=linux/amd64 ./slam.sh create toolbox
 ```
 
-All containers that exchange ROS data must use the same domain:
+All ROS 2 processes that need to communicate must use the same domain ID:
 
 ```bash
-ROS_DOMAIN_ID=7 ./slam.sh create
+ROS_DOMAIN_ID=7 ./slam.sh create rtab
 ```
 
-The Compose example uses host networking and Cyclone DDS. It has no hardware
-mounts and does not require privileged mode.
+The service uses host networking, Cyclone DDS, and `ROS_LOCALHOST_ONLY=0`. It
+does not require privileged mode or hardware device mounts because sensor data
+arrives over ROS.
+
+## Management commands
+
+| Command | Short form | Effect |
+| --- | --- | --- |
+| `./slam.sh build` | — | Build the image without creating a container |
+| `./slam.sh create [ALGORITHM]` | `./slam.sh -c [ALGORITHM]` | Build and start the selected algorithm |
+| `./slam.sh start` | `./slam.sh -s` | Start the existing container |
+| `./slam.sh stop` | `./slam.sh -t` | Stop the container gracefully |
+| `./slam.sh restart` | `./slam.sh -r` | Restart the existing container |
+| `./slam.sh remove` | `./slam.sh -x` | Stop and remove the container; bind-mounted data remains |
+| `./slam.sh status` | — | Show the service state |
+| `./slam.sh logs` | — | Follow the container logs; Ctrl-C stops following only |
+| `./slam.sh check` | — | Validate local prerequisites and configuration |
+| `./slam.sh help` | `./slam.sh -h` | Show command help |
+
+## Environment variables
+
+| Variable | Default | Purpose |
+| --- | --- | --- |
+| `ROBOT_PLATFORM` | `linux/arm64` | Docker target platform; use `linux/amd64` on an x86-64 development host |
+| `ROS_DOMAIN_ID` | `0` | ROS 2 DDS domain shared with the other robot modules |
+| `HOST_UID` | `1000` | UID assigned to the non-root `slam` user in the image |
+| `HOST_GID` | `1000` | GID assigned to the non-root `slam` user in the image |
+
+Changing `HOST_UID` or `HOST_GID` requires rebuilding the image.
 
 ## Configuration
 
-`config/slam.yaml` is mounted read-only into the container. It has two
-sections:
+The complete local `config/` directory is mounted read-only at `/ws/config`.
+Configuration edits therefore do not require an image rebuild, but the
+container must be restarted before a ROS node reloads them.
 
-- `slam_bringup.ros__parameters` controls the runtime mode, namespace,
-  database, topic remappings, and log level;
-- `rtabmap.ros__parameters` is passed to the upstream RTAB-Map node, allowing
-  additional supported RTAB-Map parameters to be added without changing the
-  launch file.
+### RTAB-Map configuration
 
-The launch file can also use another configuration:
+`config/slam.yaml` contains:
 
-```bash
-ros2 launch rtabmap_bringup slam.launch.py \
-  config_file:=/absolute/path/to/slam.yaml
-```
+- `slam_bringup.ros__parameters`: runtime mode, namespace, database path,
+  topic remappings, and log level;
+- `rtabmap.ros__parameters`: parameters passed to the upstream
+  `rtabmap_slam/rtabmap` node.
 
-### Database modes
+Important current defaults are:
+
+| Setting | Value |
+| --- | --- |
+| Mode | `reset_mapping` |
+| Namespace | `/rtabmap` |
+| Database | `/data/rtabmap.db` |
+| Robot frame | `base_link` |
+| Map frame | `map` |
+| Detection rate | `3.0` Hz |
+| Approximate-sync maximum interval | `0.10` s |
+
+RTAB-Map supports these configured modes:
 
 | Mode | Behaviour |
 | --- | --- |
-| `mapping` | Create a database or continue mapping from the existing one. |
-| `reset_mapping` | Delete the configured database before creating a new map. |
-| `localization` | Load an existing non-empty database without adding map nodes. |
+| `mapping` | Create a database or continue mapping from the existing database |
+| `reset_mapping` | Delete the configured database before starting a new map |
+| `localization` | Load an existing, non-empty database without adding map nodes |
 
-The default is `mapping`. The database is stored in `data/rtabmap.db`, which
-survives container replacement. Select `reset_mapping` deliberately because it
-deletes that file when RTAB-Map starts.
+> **Warning:** the repository currently defaults to `reset_mapping`. Every
+> RTAB-Map start deletes `/data/rtabmap.db`. Change the mode to `mapping` before
+> relying on database persistence.
 
-### Processing rate
+The host `data/` directory is bind-mounted at `/data`, so `rtabmap.db` survives
+container replacement in `mapping` and `localization` modes.
 
-`Rtabmap/DetectionRate` is `5.0` Hz by default. This is independent of the
-15 FPS RealSense stream. If processing takes longer than 200 ms per update,
-CPU usage remains saturated, or the Raspberry Pi thermally throttles, reduce
-the value to `3.0` or `2.0`. The bounded input queues prevent old frames from
-accumulating while RTAB-Map is busy.
+### SLAM Toolbox configuration
 
-### Frames
+`config/slam_toolbox_config.yaml` is passed directly to the
+`async_slam_toolbox_node`. Important defaults include:
 
-RTAB-Map uses `base_link` as its robot frame and publishes `map -> odom`. The
-EKF remains the only publisher of `odom -> base_link`. `realsense_link` is the
-camera mounting frame in the robot description; it must be connected to
-`base_link` and to the optical frame reported by the RealSense messages.
+| Setting | Value |
+| --- | --- |
+| Mode | `mapping` |
+| Scan topic | `/scan` |
+| Robot frame | `base_footprint` |
+| Odometry frame | `odom` |
+| Map frame | `map` |
+| Map resolution | `0.025` m/cell |
+| Map update interval | `2.0` s |
+| Interactive mode | enabled |
 
-Do not change RTAB-Map's `frame_id` to `realsense_link` while `/odom` describes
-`base_link`, because that would mix camera and robot poses.
+SLAM Toolbox maps are not automatically written to the host `data/` directory.
+Use its save/serialization services and choose a path under `/data` when map
+persistence is required. Localization also requires a previously serialized
+pose graph and the corresponding localization settings in the YAML file.
 
 ## ROS outputs
 
-With the default namespace, the main outputs are:
+### RTAB-Map outputs
+
+With the default `/rtabmap` namespace, the principal outputs are:
 
 | Topic | Type or purpose |
 | --- | --- |
-| `/rtabmap/map` | `nav_msgs/msg/OccupancyGrid` for 2D navigation |
+| `/rtabmap/map` | `nav_msgs/msg/OccupancyGrid` |
 | `/rtabmap/mapData` | RTAB-Map graph and compressed sensor data |
 | `/rtabmap/mapGraph` | Optimized pose graph |
-| `/rtabmap/cloud_map` | Assembled `sensor_msgs/msg/PointCloud2` map |
+| `/rtabmap/cloud_map` | `sensor_msgs/msg/PointCloud2` assembled map |
 | `/rtabmap/info` | Processing and loop-closure statistics |
 
-The outputs are visible to an offboard computer on the same ROS domain. A
-future offboard configuration can reconstruct the detailed 3D environment
-from `/rtabmap/mapData` with the `rtabmap_rviz_plugins/MapCloud` display, or
-show `/rtabmap/cloud_map` with RViz's standard PointCloud2 display. No offboard
-or visualization code is included here.
+### SLAM Toolbox outputs and services
+
+The principal outputs are:
+
+| Name | Type or purpose |
+| --- | --- |
+| `/map` | `nav_msgs/msg/OccupancyGrid` |
+| `/map_metadata` | `nav_msgs/msg/MapMetaData` |
+| `/pose` | `geometry_msgs/msg/PoseWithCovarianceStamped` |
+| `/slam_toolbox/graph_visualization` | Pose-graph visualization markers |
+| `/slam_toolbox/scan_visualization` | Corrected scan visualization |
+
+Useful services include `/slam_toolbox/save_map`,
+`/slam_toolbox/serialize_map`, `/slam_toolbox/deserialize_map`, and
+`/slam_toolbox/pause_new_measurements`.
 
 ## Validation
 
-Static and container checks:
+Run local syntax and configuration checks:
 
 ```bash
 ./slam.sh check
-python3 -m py_compile src/rtabmap_bringup/launch/slam.launch.py
-xmllint --noout src/rtabmap_bringup/package.xml
+bash -n slam.sh
+python3 -m py_compile \
+  src/rtabmap_bringup/launch/slam.launch.py \
+  src/slam_toolbox_bringup/launch/slam_toolbox_online_async.launch.py
 docker compose config --quiet
-docker compose build
-docker compose run --rm slam ros2 pkg executables rtabmap_slam
 ```
 
-Hardware validation must additionally confirm that `/rtabmap/info` updates,
-the database grows, the TF tree is complete, and an offboard ROS 2 process can
-receive `mapData` and `cloud_map`. A successful image build alone does not
-prove RealSense, EKF, TF, or cross-host DDS behaviour.
+Build natively on an x86-64 development system and verify both packages:
+
+```bash
+ROBOT_PLATFORM=linux/amd64 docker compose build slam
+docker run --rm --platform linux/amd64 robot-modules/slam:humble \
+  ros2 pkg prefix rtabmap_bringup
+docker run --rm --platform linux/amd64 robot-modules/slam:humble \
+  ros2 pkg prefix slam_toolbox_bringup
+```
+
+Hardware validation should additionally confirm:
+
+- the selected input topics publish at the expected rate;
+- all required TF transforms are connected and use consistent timestamps;
+- `map -> odom` has exactly one publisher;
+- the map updates while the robot moves;
+- RTAB-Map's database grows in `mapping` mode, or SLAM Toolbox can serialize
+  and reload its pose graph;
+- offboard ROS 2 processes on the same domain can receive the desired outputs.
+
+A successful image build proves that the software is installed, but it cannot
+validate sensor calibration, TF geometry, clock synchronization, DDS network
+configuration, or mapping quality on the physical robot.
+
+## Troubleshooting
+
+Follow the container output first:
+
+```bash
+./slam.sh status
+./slam.sh logs
+```
+
+Check inputs from another ROS 2 shell on the same domain:
+
+```bash
+ros2 topic hz /odom
+ros2 topic hz /camera/realsense/color/image_raw
+ros2 topic hz /camera/realsense/aligned_depth_to_color/image_raw
+ros2 topic hz /scan
+```
+
+Check the transform expected by the selected algorithm:
+
+```bash
+ros2 run tf2_ros tf2_echo odom base_link          # RTAB-Map
+ros2 run tf2_ros tf2_echo odom base_footprint     # SLAM Toolbox
+```
+
+If no ROS data is visible across machines, confirm that every process uses the
+same `ROS_DOMAIN_ID`, host firewalls allow DDS traffic, multicast/routing works
+on the network, and the computers' clocks are synchronized.

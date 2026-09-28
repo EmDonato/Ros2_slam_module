@@ -21,6 +21,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     ros-${ROS_DISTRO}-launch-ros \
     ros-${ROS_DISTRO}-rmw-cyclonedds-cpp \
     ros-${ROS_DISTRO}-rtabmap-slam \
+    ros-${ROS_DISTRO}-slam-toolbox \
     && rm -rf /var/lib/apt/lists/*
 
 WORKDIR /ws
@@ -31,7 +32,7 @@ COPY config/ config/
 RUN source "/opt/ros/${ROS_DISTRO}/setup.bash" && \
     colcon build \
         --merge-install \
-        --packages-select rtabmap_bringup \
+        --packages-select rtabmap_bringup slam_toolbox_bringup \
         --cmake-args -DCMAKE_BUILD_TYPE=Release -DBUILD_TESTING=OFF && \
     rm -rf build log
 
