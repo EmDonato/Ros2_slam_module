@@ -1,3 +1,12 @@
+# RTAB-Map ROS 2 — Full structured parameter reference
+# Generated 2026-10-04 from the current upstream RTAB-Map core parameter inventory.
+#
+# IMPORTANT:
+# - Sections are ordered by how commonly they are tuned on a mobile indoor robot.
+# - Inside each section, master/high-impact controls come first, followed by related sub-controls.
+# - RTAB-Map core keys (e.g. "RGBD/LinearUpdate") are strings in the ROS 2 parameter interface.
+# - Values marked [INDOOR OVERRIDE] differ from upstream defaults and are conservative for repeated indoor spaces.
+# - Topic NAMES are normally configured with ROS remappings, not ros__parameters.
 slam_bringup:
   ros__parameters:
     # mapping: continua una mappa esistente oppure ne crea una nuova.
@@ -23,15 +32,20 @@ slam_bringup:
     map_graph_topic: "mapGraph"
     cloud_map_topic: "cloud_map"
     info_topic: "info"
-
-
 rtabmap:
   ros__parameters:
-    use_sim_time: false
 
+    # =====================================================================
+    # 01 — ROS, FRAME E INPUT
+    # RGB-D RealSense + odometria esterna EKF.
+    # Topic configurati tramite remapping nel launch.
+    # =====================================================================
+    use_sim_time: false
 
     frame_id: "base_link"
     map_frame_id: "map"
+
+    # Vuoto: usa il messaggio /odom, incluse le covarianze.
     odom_frame_id: ""
     publish_tf: true
 
@@ -43,46 +57,125 @@ rtabmap:
     subscribe_scan_cloud: false
     subscribe_odom_info: false
 
+    # Sincronizzazione: punto di partenza per immagini a 30 Hz.
     approx_sync: true
-    approx_sync_max_interval: 0.10
+    approx_sync_max_interval: 0.05
+    topic_queue_size: 10
+    sync_queue_size: 10
+    wait_for_transform: 0.2
     odom_sensor_sync: true
 
-    topic_queue_size: 30
-    sync_queue_size: 30
-    wait_for_transform: 0.2
-
-   
+    # 1 = Reliable, 2 = Best effort.
+    # Devono essere compatibili con i publisher.
     qos_image: 2
     qos_camera_info: 2
     qos_odom: 1
 
-    latch: true
-    map_cleanup: true
-    map_always_update: false
-    cloud_output_voxelized: true
-    cloud_subtract_filtering: false
+    # Il launch dovrebbe impostarlo dal blocco slam_bringup.
+    database_path: "/data/rtabmap.db"
 
+    # =====================================================================
+    # 02 — FREQUENZA, MEMORIA E INSERIMENTO NODI
+    # =====================================================================
     "Rtabmap/DetectionRate": "3.0"
 
+    # Inserimento nodi dopo circa 10 cm oppure 0.10 rad (~5.7°).
+    "RGBD/LinearUpdate": "0.10"
+    "RGBD/AngularUpdate": "0.10"
+
+    # Conserva RGB e depth nel database per ricostruzione/esportazione.
+    "Mem/BinDataKept": "true"
+    "Mem/ImagePreDecimation": "1"
+    "Mem/ImagePostDecimation": "1"
+
+    # Lascia al launch la scelta mapping/localization:
+    # mapping      -> Mem/IncrementalMemory = true
+    # localization -> Mem/IncrementalMemory = false
+
+    # =====================================================================
+    # 03 — REGISTRAZIONE VISIVA E MOVIMENTO PLANARE
+    # =====================================================================
+    # 0 = Visual. Non attiva ICP o odometria visiva.
     "Reg/Strategy": "0"
     "Reg/Force3DoF": "true"
 
-    "RGBD/LinearUpdate": "0.10"
-    "RGBD/AngularUpdate": "0.10"
+    # GFTT + ORB: selezione esplicita senza descrittori contrib.
+    "Kp/DetectorStrategy": "8"
+    "Vis/FeatureType": "8"
+
+    # Compromesso iniziale tra dettaglio e carico sul Pi.
+    "Kp/MaxFeatures": "800"
+    "Vis/MaxFeatures": "800"
+
+    # Usa feature con profondità nella fascia più utile in casa.
+    "Kp/MinDepth": "0.20"
+    "Kp/MaxDepth": "4.0"
+    "Vis/MinDepth": "0.20"
+    "Vis/MaxDepth": "4.0"
+
+    # Verifica geometrica più selettiva rispetto ai tuoi 15 inlier.
+    "Vis/MinInliers": "25"
+    "Vis/CorNNDR": "0.70"
+
+    # =====================================================================
+    # 04 — LOOP CLOSURE E PROSSIMITÀ
+    # =====================================================================
+    # Soglia di riconoscimento visivo: proposta iniziale più selettiva.
+    "Rtabmap/LoopThr": "0.15"
+
+    # Mantieni le chiusure locali basate sulla prossimità.
     "RGBD/ProximityBySpace": "true"
+
+    # Raggio locale di ricerca, NON limite delle loop closure globali.
+    "RGBD/LocalRadius": "2.0"
+
+    # Verifica la coerenza dei nuovi vincoli dopo l'ottimizzazione.
+    # Non è una distanza in metri.
+    "RGBD/OptimizeMaxError": "3.0"
+
+    # =====================================================================
+    # 05 — OTTIMIZZAZIONE DEL GRAFO
+    # =====================================================================
+    "Optimizer/Iterations": "20"
+    "Optimizer/VarianceIgnored": "false"
+
+    # Optimizer/Strategy lasciato al default della build:
+    # dipende dai backend disponibili nel container.
+
+    # =====================================================================
+    # 06 — MAPPA OCCUPANCY DA DEPTH
+    # Pose planari, ma segmentazione degli ostacoli in 3D.
+    # =====================================================================
     "RGBD/CreateOccupancyGrid": "true"
 
-    "Mem/BinDataKept": "true"
-
-    "Kp/MaxDepth": "4.0"
-    "Vis/MinInliers": "15"
-
+    # 1 = depth.
     "Grid/Sensor": "1"
     "Grid/3D": "true"
-    "Grid/DepthDecimation": "4"
+
     "Grid/CellSize": "0.05"
+    "Grid/DepthDecimation": "4"
+
+    # Limite iniziale prudente per la depth indoor.
     "Grid/RangeMin": "0.20"
-    "Grid/RangeMax": "5.0"
-    "Grid/MaxObstacleHeight": "2.0"
+    "Grid/RangeMax": "4.0"
+
     "Grid/RayTracing": "true"
     "Grid/NormalsSegmentation": "true"
+
+    # Altezze riferite al frame del robot:
+    # verificare rispetto alla quota reale di base_link.
+    "Grid/MaxGroundHeight": "0.05"
+    "Grid/MaxGroundAngle": "20"
+    "Grid/MaxObstacleHeight": "2.0"
+
+    # =====================================================================
+    # 07 — PUBBLICAZIONE E DIAGNOSTICA
+    # =====================================================================
+    map_cleanup: true
+    map_always_update: false
+
+    cloud_output_voxelized: true
+    cloud_subtract_filtering: false
+    latch: true
+
+    "Rtabmap/PublishStats": "true"
