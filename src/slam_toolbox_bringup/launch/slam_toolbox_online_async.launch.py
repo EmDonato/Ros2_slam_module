@@ -1,10 +1,10 @@
 import os
 
-from launch import LaunchDescription
-from launch.actions import DeclareLaunchArgument
-from launch.substitutions import LaunchConfiguration
-from launch_ros.actions import Node
 from ament_index_python.packages import get_package_share_directory
+from launch import LaunchDescription
+from launch.actions import DeclareLaunchArgument, IncludeLaunchDescription
+from launch.launch_description_sources import PythonLaunchDescriptionSource
+from launch.substitutions import LaunchConfiguration
 
 
 def generate_launch_description():
@@ -17,19 +17,22 @@ def generate_launch_description():
         description='Use simulation/Gazebo clock')
     declare_config_file_cmd = DeclareLaunchArgument(
         'config_file',
-        default_value=os.path.join(get_package_share_directory("slam_toolbox_bringup"),
+        default_value=os.path.join(get_package_share_directory('slam_toolbox_bringup'),
                                    'config', 'slam_toolbox_config.yaml'),
         description='Full path to the ROS2 parameters file to use for the slam_toolbox node')
 
-    start_async_slam_toolbox_node = Node(
-        parameters=[
-          config_file,
-          {'use_sim_time': use_sim_time}
-        ],
-        package='slam_toolbox',
-        executable='async_slam_toolbox_node',
-        name='slam_toolbox',
-        output='screen')
+    # Jazzy's SLAM Toolbox is a lifecycle node. Its upstream launch configures
+    # and activates it; a plain Node action leaves it unconfigured.
+    start_async_slam_toolbox_node = IncludeLaunchDescription(
+        PythonLaunchDescriptionSource(os.path.join(
+            get_package_share_directory('slam_toolbox'),
+            'launch', 'online_async_launch.py')),
+        launch_arguments={
+            'slam_params_file': config_file,
+            'use_sim_time': use_sim_time,
+            'autostart': 'true',
+            'use_lifecycle_manager': 'false',
+        }.items())
 
     ld = LaunchDescription()
 

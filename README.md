@@ -1,6 +1,6 @@
 # Headless ROS 2 SLAM
 
-This module runs one of two headless SLAM algorithms in a ROS 2 Humble Docker
+This module runs one of two headless SLAM algorithms in a ROS 2 Jazzy Docker
 container:
 
 | Selector | Algorithm | Main input | Configuration |
@@ -287,9 +287,9 @@ Build natively on an x86-64 development system and verify both packages:
 
 ```bash
 ROBOT_PLATFORM=linux/amd64 docker compose build slam
-docker run --rm --platform linux/amd64 robot-modules/slam:humble \
+docker run --rm --platform linux/amd64 robot-modules/slam:jazzy \
   ros2 pkg prefix rtabmap_bringup
-docker run --rm --platform linux/amd64 robot-modules/slam:humble \
+docker run --rm --platform linux/amd64 robot-modules/slam:jazzy \
   ros2 pkg prefix slam_toolbox_bringup
 ```
 
@@ -335,3 +335,17 @@ ros2 run tf2_ros tf2_echo odom base_footprint     # SLAM Toolbox
 If no ROS data is visible across machines, confirm that every process uses the
 same `ROS_DOMAIN_ID`, host firewalls allow DDS traffic, multicast/routing works
 on the network, and the computers' clocks are synchronized.
+
+## Jazzy lifecycle validation
+
+The local Toolbox launch delegates lifecycle configure/activate to Jazzy's
+upstream `online_async_launch.py`, retaining `config_file` and `use_sim_time`.
+A plain process launch is insufficient for the Jazzy lifecycle node.
+
+After building, test activation without sensors or persistent map mounts:
+
+```bash
+docker run --rm --network none -e ROS_DOMAIN_ID=174 \
+  -v "$PWD/tests:/tests:ro" robot-modules/slam:jazzy \
+  python3 /tests/smoke_lifecycle.py
+```

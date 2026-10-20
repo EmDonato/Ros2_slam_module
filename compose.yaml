@@ -1,6 +1,6 @@
 services:
   slam:
-    image: robot-modules/slam:humble
+    image: robot-modules/slam:jazzy
     platform: ${ROBOT_PLATFORM:-linux/arm64}
     container_name: robot-slam
     init: true
@@ -10,7 +10,7 @@ services:
       context: .
       dockerfile: Dockerfile
       args:
-        ROS_DISTRO: humble
+        ROS_DISTRO: jazzy
         UID: ${HOST_UID:-1000}
         GID: ${HOST_GID:-1000}
     network_mode: host
