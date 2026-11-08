@@ -279,7 +279,7 @@ Run local syntax and configuration checks:
 bash -n slam.sh
 python3 -m py_compile \
   src/rtabmap_bringup/launch/slam.launch.py \
-  src/slam_toolbox_bringup/launch/slam_toolbox_online_async.launch.py
+  src/slam_toolbox_bringup/launch/slam.launch.py
 docker compose config --quiet
 ```
 
@@ -335,3 +335,8 @@ ros2 run tf2_ros tf2_echo odom base_footprint     # SLAM Toolbox
 If no ROS data is visible across machines, confirm that every process uses the
 same `ROS_DOMAIN_ID`, host firewalls allow DDS traffic, multicast/routing works
 on the network, and the computers' clocks are synchronized.
+
+Clock selection: set `use_sim_time` in this module’s ROS parameter YAML.
+For standalone use, `false` uses the system clock and `true` subscribes to `/clock`.
+When launched by Open-PiRobot_simulation, `config/simulation.yaml` →
+`runtime.use_sim_time` overrides module YAML values; `null` preserves them.

@@ -19,7 +19,7 @@ services:
       ROS_DOMAIN_ID: ${ROS_DOMAIN_ID:-0}
       ROS_LOCALHOST_ONLY: 0
     volumes:
-      - ./config:/ws/config:ro
+      - ${PIROBOT_SLAM_CONFIG:-./config/slam_toolbox_config.yaml}:/ws/config/slam_toolbox_config.yaml:ro
       - ./data:/data
     command:
       - ros2

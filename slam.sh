@@ -69,7 +69,7 @@ select_algorithm() {
             ;;
         toolbox|slam_toolbox)
             export SLAM_PACKAGE="slam_toolbox_bringup"
-            export SLAM_LAUNCH_FILE="slam_toolbox_online_async.launch.py"
+            export SLAM_LAUNCH_FILE="slam.launch.py"
             export SLAM_CONFIG_FILE="/ws/config/slam_toolbox_config.yaml"
             SELECTED_ALGORITHM="toolbox"
             ;;
