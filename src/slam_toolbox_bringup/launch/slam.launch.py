@@ -16,7 +16,7 @@ def start(context):
         clock = str(params.get('use_sim_time', False)).lower()
     upstream = Path(get_package_share_directory('slam_toolbox')) / 'launch/online_async_launch.py'
     return [IncludeLaunchDescription(PythonLaunchDescriptionSource(str(upstream)),
-            launch_arguments={'slam_params_file': config, 'use_sim_time': clock, 'autostart': 'true'}.items())]
+            launch_arguments={'slam_params_file': config, 'use_sim_time': clock, 'autostart': 'true', 'use_lifecycle_manager': 'false'}.items())]
 
 
 def generate_launch_description():

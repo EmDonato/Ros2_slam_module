@@ -340,3 +340,13 @@ Clock selection: set `use_sim_time` in this module’s ROS parameter YAML.
 For standalone use, `false` uses the system clock and `true` subscribes to `/clock`.
 When launched by Open-PiRobot_simulation, `config/simulation.yaml` →
 `runtime.use_sim_time` overrides module YAML values; `null` preserves them.
+
+## Jazzy lifecycle verification
+
+The current slam.launch.py includes Jazzy's upstream online_async_launch.py with
+autostart enabled and use_lifecycle_manager disabled. It retains the configurable
+clock and module YAML from main. Verify activation without devices or map mounts:
+
+    docker run --rm --network none -e ROS_DOMAIN_ID=174 \
+      -v "$PWD/tests:/tests:ro" robot-modules/slam:jazzy \
+      python3 /tests/smoke_lifecycle.py
